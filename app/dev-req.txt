@@ -1,0 +1,3 @@
+THIS IS FOR SUGGESTING FEATURE OR FIXES, OR TELL WHAT HAVE DONE IF THERE SPECIFIC CONFIG THAT HAVE SETUP
+
+-use room database(sqlite wrapper from google) for saving input

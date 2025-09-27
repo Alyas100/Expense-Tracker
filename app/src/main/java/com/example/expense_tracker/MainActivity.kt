@@ -1,31 +1,69 @@
 package com.example.expense_tracker
 
+import com.example.expense_tracker.viewmodel.ExpenseViewModel
+import com.example.expense_tracker.viewmodel.ExpenseViewModelFactory
+import android.os.Build
 import android.os.Bundle
+import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.annotation.RequiresApi
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.wrapContentSize
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.List
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material3.Button
+import androidx.compose.material3.Card
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.ExposedDropdownMenuBox
+import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.dp
+import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import com.example.expense_tracker.data.ExpenseDatabase
+import com.example.expense_tracker.repository.ExpenseRepository
 import com.example.expense_tracker.ui.theme.ExpenseTrackerTheme
+import java.text.SimpleDateFormat
+import java.time.LocalDate
+import java.util.Calendar
+import java.util.Locale
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -44,6 +82,12 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun ExpenseTrackerApp() {
     val navController = rememberNavController()
+    val context = LocalContext.current
+    val db = ExpenseDatabase.getDatabase(context)
+    val repository = ExpenseRepository(db.expenseDao())
+    val factory = remember { ExpenseViewModelFactory(repository) }
+    val sharedViewModel: ExpenseViewModel = viewModel(factory = factory)
+
     val items = listOf(
         BottomNavItem("Add", Icons.Default.Add, "add"),
         BottomNavItem("History", Icons.Default.List, "history"),
@@ -79,8 +123,8 @@ fun ExpenseTrackerApp() {
             modifier = Modifier.padding(innerPadding)
         ) {
             composable("add") { AddExpenseScreen() }
-            composable("history") { HistoryScreen() }
-            composable("dashboard") { DashboardScreen() }
+            composable("history") { HistoryScreen(sharedViewModel) }
+            composable("dashboard") { DashboardScreen(sharedViewModel) }
         }
     }
 }
@@ -89,35 +133,192 @@ data class BottomNavItem(val label: String, val icon: androidx.compose.ui.graphi
 
 @Composable
 fun AddExpenseScreen() {
-    Box(
-        modifier = Modifier.fillMaxSize(),
-        contentAlignment = Alignment.Center
+    var amount by remember { mutableStateOf("") }
+    var category by remember { mutableStateOf("Food") }
+    var expanded by remember { mutableStateOf(false) }
+    val categories = listOf("Food", "Transport", "Shopping", "Other")
+
+    // choosing between the older and new version of showing date
+    // for device that not support api 26, it will show
+    fun getCurrentDateString(): String {
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            LocalDate.now().toString()
+        } else {
+            val format = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
+            format.format(Calendar.getInstance().time)
+        }
+    }
+
+    var date by remember {
+        // Call the function to get the initial value
+        mutableStateOf(getCurrentDateString())
+    }
+    val focusManager = LocalFocusManager.current // Used to remove focus when menu opens
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(16.dp),
+        verticalArrangement = Arrangement.Center
     ) {
-        Text("Add Expense Screen (Form goes here)")
+        // Amount input
+        OutlinedTextField(
+            value = amount,
+            onValueChange = { amount = it },
+            label = { Text("Amount") },
+            modifier = Modifier.fillMaxWidth()
+        )
+
+        Spacer(Modifier.height(16.dp))
+
+        // Category dropdown (STABLE VERSION)
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .wrapContentSize(Alignment.TopStart)
+        ) {
+            OutlinedTextField(
+                value = category,
+                onValueChange = {},
+                readOnly = true,
+                label = { Text("Category") },
+                trailingIcon = {
+                    Icon(
+                        imageVector = Icons.Default.ArrowDropDown,
+                        contentDescription = "Dropdown Arrow",
+                        modifier = Modifier.clickable { expanded = true } // Icon also opens the menu
+                    )
+                },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable(onClick = { expanded = true })
+                    .onFocusChanged { focusState ->
+                        if (focusState.isFocused) {
+                            focusManager.clearFocus()
+                        }
+                    }
+            )
+
+            DropdownMenu(
+                expanded = expanded,
+                onDismissRequest = { expanded = false }
+            ) {
+                categories.forEach { option ->
+                    DropdownMenuItem(
+                        text = { Text(option) },
+                        onClick = {
+                            category = option
+                            expanded = false
+                        }
+                    )
+                }
+            }
+        }
+
+        Spacer(Modifier.height(16.dp))
+
+        Text("Date: $date")
+
+        Spacer(Modifier.height(16.dp))
+
+        val context = LocalContext.current
+        val db = ExpenseDatabase.getDatabase(context)
+        val repository = ExpenseRepository(db.expenseDao())
+        val viewModel = remember { ExpenseViewModel(repository) }
+
+
+        // Save button
+        Button(
+            onClick = {
+                // Convert string input to Double
+                val amt = amount.toDoubleOrNull() ?: 0.0
+
+                // call func to save
+                viewModel.addExpense(amt, category, date)
+
+                Log.d("Expense", "Saved: $amount, $category, $date")
+
+
+                // clear input after save
+                amount = ""
+                category = "Food"
+
+
+
+            },
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Text("Save Expense")
+        }
+    }
+}
+
+
+@Composable
+fun HistoryScreen(viewModel: ExpenseViewModel) {
+    val expenses = viewModel.allExpenses.collectAsState()
+
+    if (expenses.value.isEmpty()) {
+        Box(
+            modifier = Modifier.fillMaxSize(),
+            contentAlignment = Alignment.Center
+        ) {
+            Text("No expenses yet")
+        }
+    } else {
+        LazyColumn(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            items(expenses.value) { expense ->
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(4.dp)
+                ) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Text("Amount: ${expense.amount}")
+                        Text("Category: ${expense.category}")
+                        Text("Date: ${expense.date}")
+                    }
+                }
+            }
+        }
     }
 }
 
 @Composable
-fun HistoryScreen() {
-    Box(
-        modifier = Modifier.fillMaxSize(),
-        contentAlignment = Alignment.Center
+fun DashboardScreen(
+    viewModel: ExpenseViewModel = viewModel()
+) {
+    val expenses = viewModel.allExpenses.collectAsState()
+
+    val total = expenses.value.sumOf { it.amount }
+    val groupedByCategory = expenses.value.groupBy { it.category }
+    val categoryTotals = groupedByCategory.mapValues { entry ->
+        entry.value.sumOf { it.amount }
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        Text("History Screen (List of expenses goes here)")
+        Text("Dashboard", style = MaterialTheme.typography.headlineMedium)
+
+        // Show total
+        Text("Total Expenses: US$total")
+
+        categoryTotals.forEach { (category, sum) ->
+            Text("$category: US$sum")
+        }
     }
 }
 
-@Composable
-fun DashboardScreen() {
-    Box(
-        modifier = Modifier.fillMaxSize(),
-        contentAlignment = Alignment.Center
-    ) {
-        Text("Dashboard Screen (Summary goes here)")
-    }
-}
-
-
+// PREVIEW--
 @Preview(showBackground = true)
 @Composable
 fun PreviewExpenseTrackerApp() {
@@ -125,3 +326,4 @@ fun PreviewExpenseTrackerApp() {
         ExpenseTrackerApp()
     }
 }
+
