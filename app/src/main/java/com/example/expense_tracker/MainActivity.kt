@@ -52,6 +52,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.compose.NavHost
@@ -60,6 +61,17 @@ import androidx.navigation.compose.rememberNavController
 import com.example.expense_tracker.data.ExpenseDatabase
 import com.example.expense_tracker.repository.ExpenseRepository
 import com.example.expense_tracker.ui.theme.ExpenseTrackerTheme
+import com.github.mikephil.charting.charts.BarChart
+import com.github.mikephil.charting.charts.PieChart
+import com.github.mikephil.charting.components.XAxis
+import com.github.mikephil.charting.data.BarData
+import com.github.mikephil.charting.data.BarDataSet
+import com.github.mikephil.charting.data.BarEntry
+import com.github.mikephil.charting.data.PieData
+import com.github.mikephil.charting.data.PieDataSet
+import com.github.mikephil.charting.data.PieEntry
+import com.github.mikephil.charting.formatter.IndexAxisValueFormatter
+import com.github.mikephil.charting.utils.ColorTemplate
 import java.text.SimpleDateFormat
 import java.time.LocalDate
 import java.util.Calendar
@@ -290,14 +302,18 @@ fun HistoryScreen(viewModel: ExpenseViewModel) {
 }
 
 @Composable
-fun DashboardScreen(
-    viewModel: ExpenseViewModel = viewModel()
-) {
+fun DashboardScreen(viewModel: ExpenseViewModel) {
     val expenses = viewModel.allExpenses.collectAsState()
 
     val total = expenses.value.sumOf { it.amount }
     val groupedByCategory = expenses.value.groupBy { it.category }
     val categoryTotals = groupedByCategory.mapValues { entry ->
+        entry.value.sumOf { it.amount }
+    }
+
+    // Group by date for bar chart
+    val groupedByDate = expenses.value.groupBy { it.date }
+    val dateTotals = groupedByDate.mapValues { entry ->
         entry.value.sumOf { it.amount }
     }
 
@@ -310,13 +326,61 @@ fun DashboardScreen(
         Text("Dashboard", style = MaterialTheme.typography.headlineMedium)
 
         // Show total
-        Text("Total Expenses: US$total")
+        Text("Total Expenses: RM$total")
 
-        categoryTotals.forEach { (category, sum) ->
-            Text("$category: US$sum")
-        }
+        Spacer(Modifier.height(16.dp))
+
+        // ---- PIE CHART (Category Breakdown) ----
+        Text("By Category", style = MaterialTheme.typography.titleMedium)
+        AndroidView(
+            factory = { context ->
+                PieChart(context).apply {
+                    val entries = categoryTotals.map { (category, sum) ->
+                        PieEntry(sum.toFloat(), category)
+                    }
+                    val dataSet = PieDataSet(entries, "Categories").apply {
+                        colors = ColorTemplate.MATERIAL_COLORS.toList()
+                        valueTextSize = 14f
+                    }
+                    data = PieData(dataSet)
+                    description.isEnabled = false
+                    legend.isEnabled = true
+                }
+            },
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(250.dp)
+        )
+
+        Spacer(Modifier.height(16.dp))
+
+        // ---- BAR CHART (Daily Breakdown) ----
+        Text("By Date", style = MaterialTheme.typography.titleMedium)
+        AndroidView(
+            factory = { context ->
+                BarChart(context).apply {
+                    val entries = dateTotals.entries.mapIndexed { index, entry ->
+                        BarEntry(index.toFloat(), entry.value.toFloat())
+                    }
+                    val dataSet = BarDataSet(entries, "Expenses by Day").apply {
+                        colors = ColorTemplate.MATERIAL_COLORS.toList()
+                        valueTextSize = 12f
+                    }
+                    data = BarData(dataSet)
+                    xAxis.valueFormatter = IndexAxisValueFormatter(dateTotals.keys.toList())
+                    xAxis.granularity = 1f
+                    xAxis.position = XAxis.XAxisPosition.BOTTOM
+                    axisRight.isEnabled = false
+                    description.isEnabled = false
+                }
+            },
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(250.dp)
+        )
     }
 }
+
 
 // PREVIEW--
 @Preview(showBackground = true)
