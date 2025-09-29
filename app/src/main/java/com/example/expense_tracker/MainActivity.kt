@@ -1,5 +1,7 @@
 package com.example.expense_tracker
 
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.outlined.CheckCircle
 import com.example.expense_tracker.viewmodel.ExpenseViewModel
 import com.example.expense_tracker.viewmodel.ExpenseViewModelFactory
 import android.os.Build
@@ -8,16 +10,18 @@ import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import androidx.annotation.RequiresApi
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.wrapContentSize
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -26,12 +30,12 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.List
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.ExposedDropdownMenuBox
-import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
@@ -48,12 +52,14 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.navigation.NavController
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -136,7 +142,8 @@ fun ExpenseTrackerApp() {
         ) {
             composable("add") { AddExpenseScreen() }
             composable("history") { HistoryScreen(sharedViewModel) }
-            composable("dashboard") { DashboardScreen(sharedViewModel) }
+            composable("dashboard") { DashboardScreen(viewModel = sharedViewModel, navController = navController) }
+            composable("gamification") { GamificationScreen(viewModel = sharedViewModel) }
         }
     }
 }
@@ -302,39 +309,189 @@ fun HistoryScreen(viewModel: ExpenseViewModel) {
 }
 
 @Composable
-fun DashboardScreen(viewModel: ExpenseViewModel) {
-    val expenses = viewModel.allExpenses.collectAsState()
+fun GamificationScreen(viewModel: ExpenseViewModel) {
+    val expenses = viewModel.allExpenses.collectAsState(initial = emptyList()).value
 
-    val total = expenses.value.sumOf { it.amount }
-    val groupedByCategory = expenses.value.groupBy { it.category }
-    val categoryTotals = groupedByCategory.mapValues { entry ->
-        entry.value.sumOf { it.amount }
+    // --- Gamification Settings ---
+    val dailyBudget = 50.0
+    val weeklySavingsGoal = 50.0
+    val weeklyFoodBudgetGoal = 75.0
+
+    // --- Gamification Logic ---
+    val today: LocalDate = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+        LocalDate.now()
+    } else {
+        LocalDate.parse(SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Calendar.getInstance().time))
     }
 
-    // Group by date for bar chart
-    val groupedByDate = expenses.value.groupBy { it.date }
-    val dateTotals = groupedByDate.mapValues { entry ->
-        entry.value.sumOf { it.amount }
+    val expensesByDate = expenses.groupBy { it.date }
+        .mapValues { entry -> entry.value.sumOf { it.amount } }
+
+    var streak = 0
+    var checkDate = today
+    val todaysTotal = expensesByDate[checkDate.toString()] ?: 0.0
+    if (todaysTotal in 0.01..dailyBudget) {
+        streak++
+        checkDate = checkDate.minusDays(1)
+    } else {
+        checkDate = checkDate.minusDays(1)
     }
 
-    Column(
+    while (true) {
+        val dailyTotal = expensesByDate[checkDate.toString()] ?: 0.0
+        if (dailyTotal in 0.01..dailyBudget) {
+            streak++
+            checkDate = checkDate.minusDays(1)
+        } else {
+            break
+        }
+    }
+
+    val calendar = Calendar.getInstance()
+    val currentWeekNumber = calendar.get(Calendar.WEEK_OF_YEAR)
+    val currentYear = calendar.get(Calendar.YEAR)
+
+    val weeklyExpenses = expenses.filter {
+        try {
+            val expenseCal = Calendar.getInstance()
+            val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
+            sdf.parse(it.date)?.let { date ->
+                expenseCal.time = date
+                return@filter expenseCal.get(Calendar.WEEK_OF_YEAR) == currentWeekNumber &&
+                        expenseCal.get(Calendar.YEAR) == currentYear
+            }
+            false
+        } catch (e: Exception) {
+            false
+        }
+    }
+
+    val weeklyBudget = dailyBudget * 7
+    val weeklySavings = weeklyBudget - weeklyExpenses.sumOf { it.amount }
+    val saved50ThisWeek = weeklySavings >= weeklySavingsGoal
+    val has3DayStreak = streak >= 3
+    val weeklyFoodSpending = weeklyExpenses
+        .filter { it.category.equals("Food", ignoreCase = true) }
+        .sumOf { it.amount }
+    val isFrugalFoodie = weeklyFoodSpending > 0 && weeklyFoodSpending <= weeklyFoodBudgetGoal
+
+    // --- Gamification UI ---
+    LazyColumn(
         modifier = Modifier
             .fillMaxSize()
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        Text("Dashboard", style = MaterialTheme.typography.headlineMedium)
+        item {
+            Text("My Badges & Streaks", style = MaterialTheme.typography.headlineMedium)
+        }
 
-        // Show total
-        Text("Total Expenses: RM$total")
+        // --- Gamification Streak Card ---
+        item {
+            Card(modifier = Modifier.fillMaxWidth()) {
+                Column(modifier = Modifier.padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text("Daily Budget Streak", style = MaterialTheme.typography.titleLarge)
+                    Spacer(Modifier.height(8.dp))
+                    Icon(
+                        imageVector = Icons.Default.Star,
+                        contentDescription = "Streak Icon",
+                        modifier = Modifier.size(48.dp),
+                        tint = if (streak > 0) MaterialTheme.colorScheme.primary else Color.Gray
+                    )
+                    Text(
+                        text = "$streak Days",
+                        style = MaterialTheme.typography.headlineMedium,
+                        color = if (streak > 0) MaterialTheme.colorScheme.primary else Color.Gray
+                    )
+                    Text(
+                        text = when {
+                            streak > 1 -> "Great job! Keep it up!"
+                            streak == 1 -> "You're on the board! One day down."
+                            else -> "Stay under your budget to start a new streak!"
+                        },
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    Text("Today's spending: RM${"%.2f".format(todaysTotal)} / RM${"%.2f".format(dailyBudget)}")
+                }
+            }
+        }
 
-        Spacer(Modifier.height(16.dp))
+        // --- Gamification Achievements Card ---
+        item {
+            Card(modifier = Modifier.fillMaxWidth()) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Text("Your Achievements", style = MaterialTheme.typography.titleLarge)
+                    Spacer(Modifier.height(8.dp))
+                    BadgeCard(
+                        title = "Saver of the Week",
+                        description = "Save at least RM${"%.2f".format(weeklySavingsGoal)} in a week.",
+                        earned = saved50ThisWeek
+                    )
+                    BadgeCard(
+                        title = "3-Day Streak",
+                        description = "Stay under budget for 3 consecutive days.",
+                        earned = has3DayStreak
+                    )
+                    BadgeCard(
+                        title = "Frugal Foodie",
+                        description = "Keep weekly food spending under RM${"%.2f".format(weeklyFoodBudgetGoal)}.",
+                        earned = isFrugalFoodie
+                    )
+                }
+            }
+        }
+    }
+}
+@Composable
+fun DashboardScreen(viewModel: ExpenseViewModel, navController: NavController) {
+    val expensesState = viewModel.allExpenses.collectAsState(initial = emptyList())
+    val expenses = expensesState.value
 
-        // ---- PIE CHART (Category Breakdown) ----
-        Text("By Category", style = MaterialTheme.typography.titleMedium)
-        AndroidView(
-            factory = { context ->
-                PieChart(context).apply {
+    // --- Dashboard Totals Logic ---
+    val total = expenses.sumOf { it.amount }
+    val categoryTotals = expenses.groupBy { it.category }.mapValues { entry ->
+        entry.value.sumOf { it.amount }
+    }
+    val dateTotals = expenses.groupBy { it.date }.mapValues { entry ->
+        entry.value.sumOf { it.amount }
+    }
+
+    // --- Dashboard UI ---
+    LazyColumn(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        item {
+            Text("Dashboard", style = MaterialTheme.typography.headlineMedium)
+        }
+
+        // --- Original Dashboard Cards ---
+        item {
+            Text("Total Expenses: RM$total")
+        }
+
+        item {
+            Text("By Category", style = MaterialTheme.typography.titleMedium)
+            AndroidView(
+                factory = { context ->
+                    PieChart(context).apply {
+                        val entries = categoryTotals.map { (category, sum) ->
+                            PieEntry(sum.toFloat(), category)
+                        }
+                        val dataSet = PieDataSet(entries, "Categories").apply {
+                            colors = ColorTemplate.MATERIAL_COLORS.toList()
+                            valueTextSize = 14f
+                        }
+                        data = PieData(dataSet)
+                        description.isEnabled = false
+                        legend.isEnabled = true
+                        invalidate()
+                    }
+                },
+                update = { chart ->
                     val entries = categoryTotals.map { (category, sum) ->
                         PieEntry(sum.toFloat(), category)
                     }
@@ -342,23 +499,20 @@ fun DashboardScreen(viewModel: ExpenseViewModel) {
                         colors = ColorTemplate.MATERIAL_COLORS.toList()
                         valueTextSize = 14f
                     }
-                    data = PieData(dataSet)
-                    description.isEnabled = false
-                    legend.isEnabled = true
-                }
-            },
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(250.dp)
-        )
+                    chart.data = PieData(dataSet)
+                    chart.invalidate()
+                },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(250.dp)
+            )
+        }
 
-        Spacer(Modifier.height(16.dp))
-
-        // ---- BAR CHART (Daily Breakdown) ----
-        Text("By Date", style = MaterialTheme.typography.titleMedium)
-        AndroidView(
-            factory = { context ->
-                BarChart(context).apply {
+        item {
+            Text("By Date", style = MaterialTheme.typography.titleMedium)
+            AndroidView(
+                factory = { context -> BarChart(context).apply { /* Initial setup */ } },
+                update = { chart ->
                     val entries = dateTotals.entries.mapIndexed { index, entry ->
                         BarEntry(index.toFloat(), entry.value.toFloat())
                     }
@@ -366,20 +520,71 @@ fun DashboardScreen(viewModel: ExpenseViewModel) {
                         colors = ColorTemplate.MATERIAL_COLORS.toList()
                         valueTextSize = 12f
                     }
-                    data = BarData(dataSet)
-                    xAxis.valueFormatter = IndexAxisValueFormatter(dateTotals.keys.toList())
-                    xAxis.granularity = 1f
-                    xAxis.position = XAxis.XAxisPosition.BOTTOM
-                    axisRight.isEnabled = false
-                    description.isEnabled = false
-                }
-            },
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(250.dp)
-        )
+                    chart.data = BarData(dataSet)
+                    chart.xAxis.valueFormatter = IndexAxisValueFormatter(dateTotals.keys.toList())
+                    chart.xAxis.granularity = 1f
+                    chart.xAxis.position = XAxis.XAxisPosition.BOTTOM
+                    chart.axisRight.isEnabled = false
+                    chart.description.isEnabled = false
+                    chart.invalidate()
+                },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(250.dp)
+            )
+        }
+
+        // --- "See My Badges" Button ---
+        item {
+            Button(
+                onClick = { navController.navigate("gamification") },
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text("See My Badges")
+            }
+        }
     }
 }
+
+
+
+@Composable
+fun BadgeCard(title: String, description: String, earned: Boolean) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 4.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = if (earned) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant
+        )
+    ) {
+        Row(
+            modifier = Modifier.padding(12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                imageVector = if (earned) Icons.Filled.CheckCircle else Icons.Outlined.CheckCircle,
+                contentDescription = if (earned) "Earned" else "Not Earned",
+                tint = if (earned) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
+                modifier = Modifier.size(32.dp)
+            )
+            Spacer(Modifier.width(12.dp))
+            Column {
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.titleMedium,
+                    color = if (earned) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface
+                )
+                Text(
+                    text = description,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = if (earned) MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f) else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+                )
+            }
+        }
+    }
+}
+
 
 
 // PREVIEW--

@@ -35,6 +35,8 @@ android {
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_11
         targetCompatibility = JavaVersion.VERSION_11
+        isCoreLibraryDesugaringEnabled = true
+
     }
     kotlinOptions {
         jvmTarget = "11"
@@ -56,6 +58,7 @@ dependencies {
     implementation(libs.androidx.material3)
     implementation(libs.androidx.navigation.compose)
     implementation("com.github.PhilJay:MPAndroidChart:v3.1.0") // compose charts
+    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.0.4")
 
 
     implementation("androidx.room:room-runtime:$room_version")
