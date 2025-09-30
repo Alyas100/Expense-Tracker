@@ -1,4 +1,19 @@
+import java.util.Properties
+
+
+// Load config.properties
+val configProps = Properties().apply {
+    val configFile = rootProject.file("config.properties")
+    if (configFile.exists()) load(configFile.inputStream())
+}
+val devPassword = configProps.getProperty("password") ?: ""
+
+
+// for room database(sqlite version from google)
 val room_version = "2.6.1"
+
+
+
 
 plugins {
     alias(libs.plugins.android.application)
@@ -6,6 +21,10 @@ plugins {
     alias(libs.plugins.kotlin.compose)
 
     id("kotlin-kapt")
+
+
+    id("com.google.gms.google-services")
+
 
 }
 
@@ -21,6 +40,11 @@ android {
         versionName = "1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+
+
+        // from config.properties file
+        buildConfigField("String", "DEV_PASSWORD", "\"$devPassword\"")
+
     }
 
     buildTypes {
@@ -41,6 +65,7 @@ android {
     }
     buildFeatures {
         compose = true
+        buildConfig = true // for enabling reading config feature
     }
 }
 
@@ -57,8 +82,22 @@ dependencies {
     implementation(libs.androidx.navigation.compose)
     implementation("com.github.PhilJay:MPAndroidChart:v3.1.0") // compose charts
 
+    // Import the BoM for the Firebase platform
+    implementation(platform("com.google.firebase:firebase-bom:34.3.0"))
+
+    // Add the dependency for the Firebase Authentication library
+    // When using the BoM, you don't specify versions in Firebase library dependencies
+    implementation("com.google.firebase:firebase-auth")
+
+    // Also add the dependencies for the Credential Manager libraries and specify their versions
+    implementation("androidx.credentials:credentials:1.3.0")
+    implementation("androidx.credentials:credentials-play-services-auth:1.3.0")
+    implementation("com.google.android.libraries.identity.googleid:googleid:1.1.1")
+
 
     implementation("androidx.room:room-runtime:$room_version")
+    implementation(libs.androidx.compose.foundation.layout)
+    implementation(libs.play.services.auth)
     kapt("androidx.room:room-compiler:$room_version")
     implementation("androidx.room:room-ktx:$room_version")
 
