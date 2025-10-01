@@ -5,6 +5,11 @@ plugins {
     alias(libs.plugins.kotlin.compose) apply false
 
 
+    // for google services
+    id("com.google.gms.google-services") version "4.4.0" apply false
+
+
+
 
 
 }
