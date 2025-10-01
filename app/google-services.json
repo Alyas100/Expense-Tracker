@@ -1,0 +1,47 @@
+{
+  "project_info": {
+    "project_number": "921342285069",
+    "project_id": "online-hackathon-e7b63",
+    "storage_bucket": "online-hackathon-e7b63.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:921342285069:android:a4b1adf52a4b67fb178c44",
+        "android_client_info": {
+          "package_name": "com.example.expense_tracker"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "921342285069-p1toe0jf6v7dmuflvkmq6fkcdgm21ta4.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.example.expense_tracker",
+            "certificate_hash": "92b749807517a3260e8055cae96a158e4f449440"
+          }
+        },
+        {
+          "client_id": "921342285069-onlva686h34j6u7iphri611kh9fdol0a.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyD9Nz6dL3kEsuToF8-C95pT661HnFN0gzc"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "921342285069-onlva686h34j6u7iphri611kh9fdol0a.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
