@@ -29,6 +29,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.List
+import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.Button
@@ -144,6 +145,7 @@ fun ExpenseTrackerApp() {
             composable("history") { HistoryScreen(sharedViewModel) }
             composable("dashboard") { DashboardScreen(viewModel = sharedViewModel, navController = navController) }
             composable("gamification") { GamificationScreen(viewModel = sharedViewModel) }
+            composable("insight_dashboard") { InsightDashboardScreen(viewModel = sharedViewModel) }
         }
     }
 }
@@ -443,13 +445,91 @@ fun GamificationScreen(viewModel: ExpenseViewModel) {
         }
     }
 }
-@Composable
-fun DashboardScreen(viewModel: ExpenseViewModel, navController: NavController) {
-    val expensesState = viewModel.allExpenses.collectAsState(initial = emptyList())
-    val expenses = expensesState.value
 
-    // --- Dashboard Totals Logic ---
-    val total = expenses.sumOf { it.amount }
+@Composable
+fun DashboardScreen(viewModel: ExpenseViewModel, navController: NavController) {// Make sure you have an initial value for the state
+    val expenses = viewModel.allExpenses.collectAsState(initial = emptyList()).value
+
+    // Basic calculations for the free dashboard
+    val totalExpenses = expenses.sumOf { it.amount }
+    val categoryTotals = expenses.groupBy { it.category }
+        .mapValues { entry -> entry.value.sumOf { it.amount } }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        Text("Dashboard", style = MaterialTheme.typography.headlineMedium)
+
+        // --- Total Expenses Card ---
+        Card(modifier = Modifier.fillMaxWidth()) {
+            Column(modifier = Modifier.padding(16.dp)) {
+                Text("Total Expenses", style = MaterialTheme.typography.titleLarge)
+                Text(
+                    "RM${"%.2f".format(totalExpenses)}",
+                    style = MaterialTheme.typography.headlineMedium,
+                    color = MaterialTheme.colorScheme.primary
+                )
+            }
+        }
+
+        // --- Basic Category Breakdown Card ---
+        Card(modifier = Modifier.fillMaxWidth()) {
+            Column(modifier = Modifier.padding(16.dp)) {
+                Text("Category Breakdown", style = MaterialTheme.typography.titleLarge)
+                Spacer(Modifier.height(8.dp))
+                if (categoryTotals.isEmpty()) {
+                    Text("No expenses yet.", style = MaterialTheme.typography.bodyMedium)
+                } else {
+                    categoryTotals.forEach { (category, sum) ->
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text(category, style = MaterialTheme.typography.bodyLarge)
+                            Text("RM${"%.2f".format(sum)}", style = MaterialTheme.typography.bodyLarge)
+                        }
+                    }
+                }
+            }
+        }
+
+        Spacer(Modifier.weight(1f)) // Pushes the buttons to the bottom
+
+        // --- "See My Badges" Button ---
+        Button(
+            onClick = { navController.navigate("gamification") },
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(50.dp)
+        ) {
+            Icon(Icons.Default.Star, contentDescription = "Badges")
+            Spacer(Modifier.width(8.dp))
+            Text("See My Badges")
+        }
+
+        // --- Unlock Insights Button ---
+        Button(
+            onClick = { navController.navigate("insight_dashboard") },
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(50.dp)
+        ) {
+            Icon(Icons.Filled.Lock, contentDescription = "Unlock")
+            Spacer(Modifier.width(8.dp))
+            Text("Unlock Insight Dashboard")
+        }
+    }
+}
+
+
+
+@Composable
+fun InsightDashboardScreen(viewModel: ExpenseViewModel) {
+    val expenses = viewModel.allExpenses.collectAsState().value
+
     val categoryTotals = expenses.groupBy { it.category }.mapValues { entry ->
         entry.value.sumOf { it.amount }
     }
@@ -457,7 +537,6 @@ fun DashboardScreen(viewModel: ExpenseViewModel, navController: NavController) {
         entry.value.sumOf { it.amount }
     }
 
-    // --- Dashboard UI ---
     LazyColumn(
         modifier = Modifier
             .fillMaxSize()
@@ -465,87 +544,84 @@ fun DashboardScreen(viewModel: ExpenseViewModel, navController: NavController) {
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
         item {
-            Text("Dashboard", style = MaterialTheme.typography.headlineMedium)
+            Text("Insight Dashboard", style = MaterialTheme.typography.headlineMedium)
         }
 
-        // --- Original Dashboard Cards ---
+        // --- Pie Chart Card ---
         item {
-            Text("Total Expenses: RM$total")
+            Card(modifier = Modifier.fillMaxWidth()) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Text("By Category", style = MaterialTheme.typography.titleMedium)
+                    AndroidView(
+                        factory = { context -> PieChart(context).apply { /* Initial setup */ } },
+                        update = { chart ->
+                            val entries = categoryTotals.map { (category, sum) ->
+                                PieEntry(sum.toFloat(), category)
+                            }
+                            val dataSet = PieDataSet(entries, "Categories").apply {
+                                colors = ColorTemplate.MATERIAL_COLORS.toList()
+                                valueTextSize = 14f
+                            }
+                            chart.data = PieData(dataSet)
+                            chart.description.isEnabled = false
+                            chart.legend.isEnabled = true
+                            chart.invalidate()
+                        },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(250.dp)
+                    )
+                }
+            }
         }
 
+        // --- Bar Chart Card ---
         item {
-            Text("By Category", style = MaterialTheme.typography.titleMedium)
-            AndroidView(
-                factory = { context ->
-                    PieChart(context).apply {
-                        val entries = categoryTotals.map { (category, sum) ->
-                            PieEntry(sum.toFloat(), category)
-                        }
-                        val dataSet = PieDataSet(entries, "Categories").apply {
-                            colors = ColorTemplate.MATERIAL_COLORS.toList()
-                            valueTextSize = 14f
-                        }
-                        data = PieData(dataSet)
-                        description.isEnabled = false
-                        legend.isEnabled = true
-                        invalidate()
-                    }
-                },
-                update = { chart ->
-                    val entries = categoryTotals.map { (category, sum) ->
-                        PieEntry(sum.toFloat(), category)
-                    }
-                    val dataSet = PieDataSet(entries, "Categories").apply {
-                        colors = ColorTemplate.MATERIAL_COLORS.toList()
-                        valueTextSize = 14f
-                    }
-                    chart.data = PieData(dataSet)
-                    chart.invalidate()
-                },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(250.dp)
-            )
+            Card(modifier = Modifier.fillMaxWidth()) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Text("By Date", style = MaterialTheme.typography.titleMedium)
+                    AndroidView(
+                        factory = { context -> BarChart(context).apply { /* Initial setup */ } },
+                        update = { chart ->
+                            val entries = dateTotals.entries.mapIndexed { index, entry ->
+                                BarEntry(index.toFloat(), entry.value.toFloat())
+                            }
+                            val dataSet = BarDataSet(entries, "Expenses by Day").apply {
+                                colors = ColorTemplate.MATERIAL_COLORS.toList()
+                                valueTextSize = 12f
+                            }
+                            chart.data = BarData(dataSet)
+                            chart.xAxis.valueFormatter = IndexAxisValueFormatter(dateTotals.keys.toList())
+                            chart.xAxis.granularity = 1f
+                            chart.xAxis.position = XAxis.XAxisPosition.BOTTOM
+                            chart.axisRight.isEnabled = false
+                            chart.description.isEnabled = false
+                            chart.invalidate()
+                        },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(250.dp)
+                    )
+                }
+            }
         }
 
+        // --- AI Forecast Placeholder Card ---
         item {
-            Text("By Date", style = MaterialTheme.typography.titleMedium)
-            AndroidView(
-                factory = { context -> BarChart(context).apply { /* Initial setup */ } },
-                update = { chart ->
-                    val entries = dateTotals.entries.mapIndexed { index, entry ->
-                        BarEntry(index.toFloat(), entry.value.toFloat())
-                    }
-                    val dataSet = BarDataSet(entries, "Expenses by Day").apply {
-                        colors = ColorTemplate.MATERIAL_COLORS.toList()
-                        valueTextSize = 12f
-                    }
-                    chart.data = BarData(dataSet)
-                    chart.xAxis.valueFormatter = IndexAxisValueFormatter(dateTotals.keys.toList())
-                    chart.xAxis.granularity = 1f
-                    chart.xAxis.position = XAxis.XAxisPosition.BOTTOM
-                    chart.axisRight.isEnabled = false
-                    chart.description.isEnabled = false
-                    chart.invalidate()
-                },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(250.dp)
-            )
-        }
-
-        // --- "See My Badges" Button ---
-        item {
-            Button(
-                onClick = { navController.navigate("gamification") },
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Text("See My Badges")
+            Card(modifier = Modifier.fillMaxWidth()) {
+                Column(modifier = Modifier.padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text("AI Monthly Forecast", style = MaterialTheme.typography.titleMedium)
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        "Coming Soon!",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+                    )
+                }
             }
         }
     }
 }
-
 
 
 @Composable
