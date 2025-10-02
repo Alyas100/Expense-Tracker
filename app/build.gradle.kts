@@ -1,3 +1,4 @@
+import java.util.Properties
 val room_version = "2.6.1"
 
 plugins {
@@ -7,6 +8,13 @@ plugins {
 
     id("kotlin-kapt")
 
+}
+
+// Load local.properties
+val localProperties = Properties()
+val localPropertiesFile = rootProject.file("local.properties")
+if (localPropertiesFile.exists()) {
+    localProperties.load(localPropertiesFile.inputStream())
 }
 
 android {
@@ -21,6 +29,14 @@ android {
         versionName = "1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+
+        // Make the API key available in BuildConfig
+        buildConfigField(
+            type = "String",
+            name = "GEMINI_API_KEY",
+            value = "\"${localProperties.getProperty("GEMINI_API_KEY")}\""
+        )
+
     }
 
     buildTypes {
@@ -42,6 +58,7 @@ android {
         jvmTarget = "11"
     }
     buildFeatures {
+        buildConfig = true
         compose = true
     }
 }
@@ -57,7 +74,8 @@ dependencies {
     implementation(libs.androidx.ui.tooling.preview)
     implementation(libs.androidx.material3)
     implementation(libs.androidx.navigation.compose)
-    implementation("com.github.PhilJay:MPAndroidChart:v3.1.0") // compose charts
+    implementation("com.github.PhilJay:MPAndroidChart:v3.1.0")
+    implementation(libs.generativeai) // compose charts
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.0.4")
 
 

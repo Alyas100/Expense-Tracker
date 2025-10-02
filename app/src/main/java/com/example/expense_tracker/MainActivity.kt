@@ -1,5 +1,6 @@
 package com.example.expense_tracker
 
+import androidx.compose.runtime.collectAsState
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.outlined.CheckCircle
 import com.example.expense_tracker.viewmodel.ExpenseViewModel
@@ -33,8 +34,10 @@ import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
@@ -529,6 +532,8 @@ fun DashboardScreen(viewModel: ExpenseViewModel, navController: NavController) {
 @Composable
 fun InsightDashboardScreen(viewModel: ExpenseViewModel) {
     val expenses = viewModel.allExpenses.collectAsState().value
+    val aiAdvice by viewModel.aiAdvice.collectAsState()
+    val isAILoading by viewModel.isAILoading.collectAsState()
 
     val categoryTotals = expenses.groupBy { it.category }.mapValues { entry ->
         entry.value.sumOf { it.amount }
@@ -536,6 +541,8 @@ fun InsightDashboardScreen(viewModel: ExpenseViewModel) {
     val dateTotals = expenses.groupBy { it.date }.mapValues { entry ->
         entry.value.sumOf { it.amount }
     }
+
+    var selectedGoal by remember { mutableStateOf("General") }
 
     LazyColumn(
         modifier = Modifier
@@ -606,17 +613,59 @@ fun InsightDashboardScreen(viewModel: ExpenseViewModel) {
             }
         }
 
-        // --- AI Forecast Placeholder Card ---
         item {
             Card(modifier = Modifier.fillMaxWidth()) {
-                Column(modifier = Modifier.padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text("AI Monthly Forecast", style = MaterialTheme.typography.titleMedium)
-                    Spacer(Modifier.height(8.dp))
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Text("AI-Powered Advice", style = MaterialTheme.typography.titleLarge)
+                    Spacer(Modifier.height(16.dp))
+
+                    // Goal selection buttons
                     Text(
-                        "Coming Soon!",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+                        "Select your focus:",
+                        style = MaterialTheme.typography.labelMedium,
+                        modifier = Modifier.align(Alignment.Start)
                     )
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Button(
+                            onClick = { selectedGoal = "General" },
+                            colors = if (selectedGoal == "General") ButtonDefaults.buttonColors() else ButtonDefaults.outlinedButtonColors()
+                        ) { Text("General Advice") }
+
+                        Button(
+                            onClick = { selectedGoal = "Saving" },
+                            colors = if (selectedGoal == "Saving") ButtonDefaults.buttonColors() else ButtonDefaults.outlinedButtonColors()
+                        ) { Text("Focus on Saving") }
+                    }
+
+                    Spacer(Modifier.height(16.dp))
+
+                    // Button to trigger the AI call
+                    Button(
+                        onClick = { viewModel.getAIAdvice(expenses, selectedGoal) },
+                        enabled = !isAILoading, // Disable button while loading
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("Get AI Advice")
+                    }
+
+                    Spacer(Modifier.height(16.dp))
+
+                    // Display loading indicator or the AI's advice
+                    if (isAILoading) {
+                        CircularProgressIndicator()
+                    } else if (aiAdvice != null) {
+                        Text(
+                            text = aiAdvice!!,
+                            style = MaterialTheme.typography.bodyLarge,
+                            modifier = Modifier.align(Alignment.Start)
+                        )
+                    }
                 }
             }
         }
