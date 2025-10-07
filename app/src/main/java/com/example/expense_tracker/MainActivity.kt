@@ -1,5 +1,7 @@
 package com.example.expense_tracker
 
+import com.github.mikephil.charting.formatter.ValueFormatter
+import androidx.compose.runtime.collectAsState
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.outlined.CheckCircle
 import com.example.expense_tracker.viewmodel.ExpenseViewModel
@@ -29,11 +31,14 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.List
+import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
@@ -73,10 +78,13 @@ import com.github.mikephil.charting.components.XAxis
 import com.github.mikephil.charting.data.BarData
 import com.github.mikephil.charting.data.BarDataSet
 import com.github.mikephil.charting.data.BarEntry
+import com.github.mikephil.charting.data.Entry
 import com.github.mikephil.charting.data.PieData
 import com.github.mikephil.charting.data.PieDataSet
 import com.github.mikephil.charting.data.PieEntry
 import com.github.mikephil.charting.formatter.IndexAxisValueFormatter
+import com.github.mikephil.charting.highlight.Highlight
+import com.github.mikephil.charting.listener.OnChartValueSelectedListener
 import com.github.mikephil.charting.utils.ColorTemplate
 import java.text.SimpleDateFormat
 import java.time.LocalDate
@@ -144,6 +152,7 @@ fun ExpenseTrackerApp() {
             composable("history") { HistoryScreen(sharedViewModel) }
             composable("dashboard") { DashboardScreen(viewModel = sharedViewModel, navController = navController) }
             composable("gamification") { GamificationScreen(viewModel = sharedViewModel) }
+            composable("insight_dashboard") { InsightDashboardScreen(viewModel = sharedViewModel) }
         }
     }
 }
@@ -443,13 +452,93 @@ fun GamificationScreen(viewModel: ExpenseViewModel) {
         }
     }
 }
-@Composable
-fun DashboardScreen(viewModel: ExpenseViewModel, navController: NavController) {
-    val expensesState = viewModel.allExpenses.collectAsState(initial = emptyList())
-    val expenses = expensesState.value
 
-    // --- Dashboard Totals Logic ---
-    val total = expenses.sumOf { it.amount }
+@Composable
+fun DashboardScreen(viewModel: ExpenseViewModel, navController: NavController) {// Make sure you have an initial value for the state
+    val expenses = viewModel.allExpenses.collectAsState(initial = emptyList()).value
+
+    // Basic calculations for the free dashboard
+    val totalExpenses = expenses.sumOf { it.amount }
+    val categoryTotals = expenses.groupBy { it.category }
+        .mapValues { entry -> entry.value.sumOf { it.amount } }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        Text("Dashboard", style = MaterialTheme.typography.headlineMedium)
+
+        // --- Total Expenses Card ---
+        Card(modifier = Modifier.fillMaxWidth()) {
+            Column(modifier = Modifier.padding(16.dp)) {
+                Text("Total Expenses", style = MaterialTheme.typography.titleLarge)
+                Text(
+                    "RM${"%.2f".format(totalExpenses)}",
+                    style = MaterialTheme.typography.headlineMedium,
+                    color = MaterialTheme.colorScheme.primary
+                )
+            }
+        }
+
+        // --- Basic Category Breakdown Card ---
+        Card(modifier = Modifier.fillMaxWidth()) {
+            Column(modifier = Modifier.padding(16.dp)) {
+                Text("Category Breakdown", style = MaterialTheme.typography.titleLarge)
+                Spacer(Modifier.height(8.dp))
+                if (categoryTotals.isEmpty()) {
+                    Text("No expenses yet.", style = MaterialTheme.typography.bodyMedium)
+                } else {
+                    categoryTotals.forEach { (category, sum) ->
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text(category, style = MaterialTheme.typography.bodyLarge)
+                            Text("RM${"%.2f".format(sum)}", style = MaterialTheme.typography.bodyLarge)
+                        }
+                    }
+                }
+            }
+        }
+
+        Spacer(Modifier.weight(1f)) // Pushes the buttons to the bottom
+
+        // --- "See My Badges" Button ---
+        Button(
+            onClick = { navController.navigate("gamification") },
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(50.dp)
+        ) {
+            Icon(Icons.Default.Star, contentDescription = "Badges")
+            Spacer(Modifier.width(8.dp))
+            Text("See My Badges")
+        }
+
+        // --- Unlock Insights Button ---
+        Button(
+            onClick = { navController.navigate("insight_dashboard") },
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(50.dp)
+        ) {
+            Icon(Icons.Filled.Lock, contentDescription = "Unlock")
+            Spacer(Modifier.width(8.dp))
+            Text("Unlock Insight Dashboard")
+        }
+    }
+}
+
+
+
+@Composable
+fun InsightDashboardScreen(viewModel: ExpenseViewModel) {
+    val expenses by viewModel.allExpenses.collectAsState(initial = emptyList())
+    val aiAdvice by viewModel.aiAdvice.collectAsState()
+    val isAILoading by viewModel.isAILoading.collectAsState()
+
     val categoryTotals = expenses.groupBy { it.category }.mapValues { entry ->
         entry.value.sumOf { it.amount }
     }
@@ -457,7 +546,8 @@ fun DashboardScreen(viewModel: ExpenseViewModel, navController: NavController) {
         entry.value.sumOf { it.amount }
     }
 
-    // --- Dashboard UI ---
+    var selectedGoal by remember { mutableStateOf("General") }
+
     LazyColumn(
         modifier = Modifier
             .fillMaxSize()
@@ -465,87 +555,162 @@ fun DashboardScreen(viewModel: ExpenseViewModel, navController: NavController) {
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
         item {
-            Text("Dashboard", style = MaterialTheme.typography.headlineMedium)
+            Text("Insight Dashboard", style = MaterialTheme.typography.headlineMedium)
         }
 
-        // --- Original Dashboard Cards ---
+        // --- Pie Chart Card (Updated) ---
         item {
-            Text("Total Expenses: RM$total")
+            Card(modifier = Modifier.fillMaxWidth()) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Text("By Category", style = MaterialTheme.typography.titleMedium)
+                    AndroidView(
+                        factory = { context ->
+                            PieChart(context).apply {
+                                this.isHighlightPerTapEnabled = true
+                                this.description.isEnabled = false
+                                this.setDrawEntryLabels(false)
+                                this.legend.isEnabled = true
+                                this.isDrawHoleEnabled = true
+                                this.holeRadius = 58f
+                                this.transparentCircleRadius = 61f
+                            }
+                        },
+                        update = { chart ->
+                            val entries = categoryTotals.map { (category, sum) ->
+                                PieEntry(sum.toFloat(), category)
+                            }
+
+                            val dataSet = PieDataSet(entries, "").apply {
+                                colors = ColorTemplate.MATERIAL_COLORS.toList()
+                                this.setDrawValues(true)
+                                valueTextSize = 12f
+                                setValueTextColor(android.graphics.Color.BLACK)
+
+                                // --- MODIFICATION: Format the value as a whole number ---
+                                this.valueFormatter = object : ValueFormatter() {
+                                    override fun getFormattedValue(value: Float): String {
+                                        // Convert the float to an integer and then to a string
+                                        return value.toInt().toString()
+                                    }
+                                }
+                            }
+
+                            chart.data = PieData(dataSet)
+
+                            val listener = object : OnChartValueSelectedListener {
+                                override fun onValueSelected(e: Entry?, h: com.github.mikephil.charting.highlight.Highlight?) {
+                                    val pieEntry = e as? PieEntry
+                                    pieEntry?.label?.let { label ->
+                                        chart.centerText = label
+                                        chart.setCenterTextSize(24f)
+                                        chart.setCenterTextColor(android.graphics.Color.BLACK)
+                                    }
+                                }
+
+                                override fun onNothingSelected() {
+                                    chart.centerText = ""
+                                }
+                            }
+                            chart.setOnChartValueSelectedListener(listener)
+
+                            chart.invalidate()
+                        },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(250.dp)
+                    )
+                }
+            }
+        }
+        // --- Bar Chart Card ---
+        item {
+            Card(modifier = Modifier.fillMaxWidth()) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Text("By Date", style = MaterialTheme.typography.titleMedium)
+                    AndroidView(
+                        factory = { context -> BarChart(context).apply { /* Initial setup */ } },
+                        update = { chart ->
+                            val entries = dateTotals.entries.mapIndexed { index, entry ->
+                                BarEntry(index.toFloat(), entry.value.toFloat())
+                            }
+                            val dataSet = BarDataSet(entries, "Expenses by Day").apply {
+                                colors = ColorTemplate.MATERIAL_COLORS.toList()
+                                valueTextSize = 12f
+                            }
+                            chart.data = BarData(dataSet)
+                            chart.xAxis.valueFormatter = IndexAxisValueFormatter(dateTotals.keys.toList())
+                            chart.xAxis.granularity = 1f
+                            chart.xAxis.position = XAxis.XAxisPosition.BOTTOM
+                            chart.axisRight.isEnabled = false
+                            chart.description.isEnabled = false
+                            chart.invalidate()
+                        },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(250.dp)
+                    )
+                }
+            }
         }
 
         item {
-            Text("By Category", style = MaterialTheme.typography.titleMedium)
-            AndroidView(
-                factory = { context ->
-                    PieChart(context).apply {
-                        val entries = categoryTotals.map { (category, sum) ->
-                            PieEntry(sum.toFloat(), category)
-                        }
-                        val dataSet = PieDataSet(entries, "Categories").apply {
-                            colors = ColorTemplate.MATERIAL_COLORS.toList()
-                            valueTextSize = 14f
-                        }
-                        data = PieData(dataSet)
-                        description.isEnabled = false
-                        legend.isEnabled = true
-                        invalidate()
-                    }
-                },
-                update = { chart ->
-                    val entries = categoryTotals.map { (category, sum) ->
-                        PieEntry(sum.toFloat(), category)
-                    }
-                    val dataSet = PieDataSet(entries, "Categories").apply {
-                        colors = ColorTemplate.MATERIAL_COLORS.toList()
-                        valueTextSize = 14f
-                    }
-                    chart.data = PieData(dataSet)
-                    chart.invalidate()
-                },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(250.dp)
-            )
-        }
+            Card(modifier = Modifier.fillMaxWidth()) {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Text("AI-Powered Advice", style = MaterialTheme.typography.titleLarge)
+                    Spacer(Modifier.height(16.dp))
 
-        item {
-            Text("By Date", style = MaterialTheme.typography.titleMedium)
-            AndroidView(
-                factory = { context -> BarChart(context).apply { /* Initial setup */ } },
-                update = { chart ->
-                    val entries = dateTotals.entries.mapIndexed { index, entry ->
-                        BarEntry(index.toFloat(), entry.value.toFloat())
-                    }
-                    val dataSet = BarDataSet(entries, "Expenses by Day").apply {
-                        colors = ColorTemplate.MATERIAL_COLORS.toList()
-                        valueTextSize = 12f
-                    }
-                    chart.data = BarData(dataSet)
-                    chart.xAxis.valueFormatter = IndexAxisValueFormatter(dateTotals.keys.toList())
-                    chart.xAxis.granularity = 1f
-                    chart.xAxis.position = XAxis.XAxisPosition.BOTTOM
-                    chart.axisRight.isEnabled = false
-                    chart.description.isEnabled = false
-                    chart.invalidate()
-                },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(250.dp)
-            )
-        }
+                    // Goal selection buttons
+                    Text(
+                        "Select your focus:",
+                        style = MaterialTheme.typography.labelMedium,
+                        modifier = Modifier.align(Alignment.Start)
+                    )
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Button(
+                            onClick = { selectedGoal = "General" },
+                            colors = if (selectedGoal == "General") ButtonDefaults.buttonColors() else ButtonDefaults.outlinedButtonColors()
+                        ) { Text("General Advice") }
 
-        // --- "See My Badges" Button ---
-        item {
-            Button(
-                onClick = { navController.navigate("gamification") },
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Text("See My Badges")
+                        Button(
+                            onClick = { selectedGoal = "Saving" },
+                            colors = if (selectedGoal == "Saving") ButtonDefaults.buttonColors() else ButtonDefaults.outlinedButtonColors()
+                        ) { Text("Focus on Saving") }
+                    }
+
+                    Spacer(Modifier.height(16.dp))
+
+                    // Button to trigger the AI call
+                    Button(
+                        onClick = { viewModel.getAIAdvice(expenses, selectedGoal) },
+                        enabled = !isAILoading, // Disable button while loading
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("Get AI Advice")
+                    }
+
+                    Spacer(Modifier.height(16.dp))
+
+                    // Display loading indicator or the AI's advice
+                    if (isAILoading) {
+                        CircularProgressIndicator()
+                    } else if (aiAdvice != null) {
+                        Text(
+                            text = aiAdvice!!,
+                            style = MaterialTheme.typography.bodyLarge,
+                            modifier = Modifier.align(Alignment.Start)
+                        )
+                    }
+                }
             }
         }
     }
 }
-
 
 
 @Composable
