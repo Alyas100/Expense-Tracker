@@ -1,5 +1,6 @@
 package com.example.expense_tracker
 
+import com.github.mikephil.charting.formatter.ValueFormatter
 import androidx.compose.runtime.collectAsState
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.outlined.CheckCircle
@@ -77,10 +78,13 @@ import com.github.mikephil.charting.components.XAxis
 import com.github.mikephil.charting.data.BarData
 import com.github.mikephil.charting.data.BarDataSet
 import com.github.mikephil.charting.data.BarEntry
+import com.github.mikephil.charting.data.Entry
 import com.github.mikephil.charting.data.PieData
 import com.github.mikephil.charting.data.PieDataSet
 import com.github.mikephil.charting.data.PieEntry
 import com.github.mikephil.charting.formatter.IndexAxisValueFormatter
+import com.github.mikephil.charting.highlight.Highlight
+import com.github.mikephil.charting.listener.OnChartValueSelectedListener
 import com.github.mikephil.charting.utils.ColorTemplate
 import java.text.SimpleDateFormat
 import java.time.LocalDate
@@ -531,7 +535,7 @@ fun DashboardScreen(viewModel: ExpenseViewModel, navController: NavController) {
 
 @Composable
 fun InsightDashboardScreen(viewModel: ExpenseViewModel) {
-    val expenses = viewModel.allExpenses.collectAsState().value
+    val expenses by viewModel.allExpenses.collectAsState(initial = emptyList())
     val aiAdvice by viewModel.aiAdvice.collectAsState()
     val isAILoading by viewModel.isAILoading.collectAsState()
 
@@ -554,24 +558,61 @@ fun InsightDashboardScreen(viewModel: ExpenseViewModel) {
             Text("Insight Dashboard", style = MaterialTheme.typography.headlineMedium)
         }
 
-        // --- Pie Chart Card ---
+        // --- Pie Chart Card (Updated) ---
         item {
             Card(modifier = Modifier.fillMaxWidth()) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     Text("By Category", style = MaterialTheme.typography.titleMedium)
                     AndroidView(
-                        factory = { context -> PieChart(context).apply { /* Initial setup */ } },
+                        factory = { context ->
+                            PieChart(context).apply {
+                                this.isHighlightPerTapEnabled = true
+                                this.description.isEnabled = false
+                                this.setDrawEntryLabels(false)
+                                this.legend.isEnabled = true
+                                this.isDrawHoleEnabled = true
+                                this.holeRadius = 58f
+                                this.transparentCircleRadius = 61f
+                            }
+                        },
                         update = { chart ->
                             val entries = categoryTotals.map { (category, sum) ->
                                 PieEntry(sum.toFloat(), category)
                             }
-                            val dataSet = PieDataSet(entries, "Categories").apply {
+
+                            val dataSet = PieDataSet(entries, "").apply {
                                 colors = ColorTemplate.MATERIAL_COLORS.toList()
-                                valueTextSize = 14f
+                                this.setDrawValues(true)
+                                valueTextSize = 12f
+                                setValueTextColor(android.graphics.Color.BLACK)
+
+                                // --- MODIFICATION: Format the value as a whole number ---
+                                this.valueFormatter = object : ValueFormatter() {
+                                    override fun getFormattedValue(value: Float): String {
+                                        // Convert the float to an integer and then to a string
+                                        return value.toInt().toString()
+                                    }
+                                }
                             }
+
                             chart.data = PieData(dataSet)
-                            chart.description.isEnabled = false
-                            chart.legend.isEnabled = true
+
+                            val listener = object : OnChartValueSelectedListener {
+                                override fun onValueSelected(e: Entry?, h: com.github.mikephil.charting.highlight.Highlight?) {
+                                    val pieEntry = e as? PieEntry
+                                    pieEntry?.label?.let { label ->
+                                        chart.centerText = label
+                                        chart.setCenterTextSize(24f)
+                                        chart.setCenterTextColor(android.graphics.Color.BLACK)
+                                    }
+                                }
+
+                                override fun onNothingSelected() {
+                                    chart.centerText = ""
+                                }
+                            }
+                            chart.setOnChartValueSelectedListener(listener)
+
                             chart.invalidate()
                         },
                         modifier = Modifier
@@ -581,7 +622,6 @@ fun InsightDashboardScreen(viewModel: ExpenseViewModel) {
                 }
             }
         }
-
         // --- Bar Chart Card ---
         item {
             Card(modifier = Modifier.fillMaxWidth()) {
